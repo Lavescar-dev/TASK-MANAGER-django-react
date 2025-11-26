@@ -1,0 +1,12 @@
+{
+  "name": "task-manager-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "venv\\Scripts\\python.exe manage.py runserver",
+    "frontend": "npm run --prefix frontend dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
