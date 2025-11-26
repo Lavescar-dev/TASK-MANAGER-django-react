@@ -3,12 +3,20 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import api from '../services/api';
 
+// --- YARDIMCI FONKSİYON: Resim URL Düzeltici ---
+const getFullImageUrl = (path: string | null) => {
+    if (!path) return undefined;
+    if (path.startsWith('http')) return path;
+    return `http://127.0.0.1:8000${path}`;
+};
+
 // --- TİPLER ---
 interface UserLite {
     id: number;
     username: string;
     first_name: string;
     last_name: string;
+    avatar: string | null;
 }
 
 interface Tag {
@@ -25,10 +33,10 @@ interface Task {
     order: number;
     tags: Tag[];
     due_date: string | null;
-    created_at: string;                // YENİ: Oluşturulma zamanı
-    assigned_to: number | null;        // ID
-    assigned_to_user: UserLite | null; // Detay
-    created_by_user: UserLite | null;  // YENİ: Oluşturan kişi detayı
+    created_at: string;
+    assigned_to: number | null;
+    assigned_to_user: UserLite | null;
+    created_by_user: UserLite | null;
 }
 
 interface Column {
@@ -86,14 +94,14 @@ const getDateStatus = (dateString: string | null) => {
     return { color: 'text-gray-400', label: formattedDate };
 };
 
-// İsimden Baş Harf (Avatar)
+// İsimden Baş Harf
 const getInitials = (user: UserLite) => {
     const first = user.first_name ? user.first_name[0] : user.username[0];
     const last = user.last_name ? user.last_name[0] : '';
     return (first + last).toUpperCase();
 };
 
-// İsim Formatlayıcı (Ali Veli veya @aliveli)
+// Kullanıcı Adı Gösterimi
 const getUserName = (user: UserLite) => {
     if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
     return user.username;
@@ -476,13 +484,22 @@ const BoardDetail = () => {
                                                                         </div>
                                                                     ) : <div></div>}
 
-                                                                    {/* Avatar (Assigned To) */}
+                                                                    {/* Avatar */}
                                                                     {task.assigned_to_user && (
-                                                                        <div 
-                                                                            className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold border border-gray-600 shadow-sm" 
-                                                                            title={`Assigned to: ${getUserName(task.assigned_to_user)}`}
-                                                                        >
-                                                                            {getInitials(task.assigned_to_user)}
+                                                                        <div className="relative group w-6 h-6" title={`Assigned to: ${getUserName(task.assigned_to_user)}`}>
+                                                                            {task.assigned_to_user.avatar ? (
+                                                                                <img 
+                                                                                    src={getFullImageUrl(task.assigned_to_user.avatar)} 
+                                                                                    alt="avatar" 
+                                                                                    className="w-6 h-6 rounded-full object-cover border border-gray-600 absolute top-0 left-0"
+                                                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                                />
+                                                                            ) : null}
+                                                                            
+                                                                            {/* Resim yoksa veya kırık ise arkadaki harf görünür */}
+                                                                            <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white border border-gray-600">
+                                                                                {getInitials(task.assigned_to_user)}
+                                                                            </div>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -571,7 +588,7 @@ const BoardDetail = () => {
                                 </div>
                             </div>
 
-                            {/* YENİ: Assign To Dropdown */}
+                            {/* Assign To Dropdown */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Assign To</label>
                                 <select 
@@ -617,7 +634,7 @@ const BoardDetail = () => {
                                 <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none h-40 resize-none leading-relaxed" placeholder="Add a more detailed description..." />
                             </div>
 
-                            {/* YENİ: Created By Info (Footer) */}
+                            {/* Created By Info */}
                             <div className="mt-6 pt-4 border-t border-gray-700 text-xs text-gray-500 flex justify-between">
                                 <span>Created by: <span className="text-gray-300">{editingTask.task.created_by_user ? getUserName(editingTask.task.created_by_user) : 'Unknown'}</span></span>
                                 <span>Created on: {new Date(editingTask.task.created_at).toLocaleDateString('tr-TR')}</span>
@@ -701,7 +718,7 @@ const BoardDetail = () => {
                                 </div>
                             </div>
 
-                            {/* YENİ: Add Task için de Assignee */}
+                            {/* Assign To (Add Task) */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-1">Assign To</label>
                                 <select 

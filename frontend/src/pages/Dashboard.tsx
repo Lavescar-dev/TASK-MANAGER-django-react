@@ -87,20 +87,34 @@ const Dashboard = () => {
     return (
         <div className="min-h-screen bg-gray-900 text-white font-sans">
             {/* Navbar */}
+            {/* Navbar */}
             <nav className="bg-gray-800 border-b border-gray-700 px-6 py-4 shadow-md">
                 <div className="max-w-7xl mx-auto flex justify-between items-center">
+                    {/* Logo */}
                     <div className="flex items-center space-x-2">
                         <span className="text-2xl">📋</span>
                         <h1 className="text-xl font-bold tracking-tight text-white">
                             Task<span className="text-blue-500">Manager</span>
                         </h1>
                     </div>
-                    <button 
-                        onClick={handleLogout}
-                        className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700 rounded-md transition-all"
-                    >
-                        Logout
-                    </button>
+
+                    {/* Sağ Menü (Profil & Çıkış) */}
+                    <div className="flex items-center space-x-4">
+                        <button 
+                            onClick={() => navigate('/profile')} 
+                            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-gray-700 hover:bg-gray-600 rounded-md transition-all"
+                        >
+                            <span>👤</span>
+                            <span>Profile</span>
+                        </button>
+                        
+                        <button 
+                            onClick={handleLogout}
+                            className="px-4 py-2 text-sm font-medium text-red-400 hover:text-white hover:bg-red-900/30 rounded-md transition-all"
+                        >
+                            Logout
+                        </button>
+                    </div>
                 </div>
             </nav>
 

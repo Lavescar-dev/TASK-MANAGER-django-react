@@ -12,21 +12,18 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv # En tepeye ekle
-
-# .env yükle
-load_dotenv()
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# GÜVENLİK: Secret Key'i .env'den çek
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-varsayilan-anahtar')
+# .env dosyasını yüklemeyi dene
+load_dotenv(BASE_DIR / '.env')
 
-# Debug modunu string kontrolü ile yap
-DEBUG = os.getenv('DEBUG') == 'True'
-
-ALLOWED_HOSTS = ["*"] # Docker için gerekli
+# --- GÜVENLİK AYARLARI (ZORLA AÇIYORUZ) ---
+SECRET_KEY = 'django-insecure-test-key'
+DEBUG = True  # <--- ENV'YE BAKMA, DİREKT TRUE YAP
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -144,3 +141,13 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 
+
+# --- DOSYANIN EN ALTI (MEDYA AYARLARI) ---
+STATIC_URL = 'static/'
+
+# Medya dosyalarının URL'si (Tarayıcıda görünecek kısım)
+MEDIA_URL = '/media/'
+
+# Medya dosyalarının fiziksel konumu (Bilgisayarda saklanacak yer)
+# os.path.join kullanarak Windows hatasını engelliyoruz.
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

@@ -3,12 +3,8 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from .models import Board, Column, Task, Tag
 from .serializers import (
-    BoardSerializer, 
-    ColumnSerializer, 
-    TaskSerializer, 
-    TagSerializer, 
-    RegisterSerializer,
-    UserLiteSerializer 
+    BoardSerializer, ColumnSerializer, TaskSerializer, TagSerializer, 
+    RegisterSerializer, UserLiteSerializer, UserProfileSerializer
 )
 
 # --- REGISTER VIEW ---
@@ -26,7 +22,15 @@ class RegisterView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
-# --- USER LIST VIEW (YENİ - Dropdown için) ---
+# --- USER PROFILE VIEW (Eksik olan buydu!) ---
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+# --- USER LIST VIEW ---
 class UserListView(generics.ListAPIView):
     queryset = User.objects.all()
     serializer_class = UserLiteSerializer
@@ -49,13 +53,12 @@ class ColumnViewSet(viewsets.ModelViewSet):
     serializer_class = ColumnSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-# --- TASK VIEW (Hata buradaydı, düzeltildi) ---
+# --- TASK VIEW ---
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    # Görevi oluşturan kişiyi (created_by) otomatik kaydet
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
