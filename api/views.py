@@ -1,11 +1,19 @@
 from rest_framework import viewsets, permissions, generics, status
 from rest_framework.response import Response
+from django.contrib.auth.models import User
 from .models import Board, Column, Task, Tag
-from .serializers import BoardSerializer, ColumnSerializer, TaskSerializer, TagSerializer, RegisterSerializer
+from .serializers import (
+    BoardSerializer, 
+    ColumnSerializer, 
+    TaskSerializer, 
+    TagSerializer, 
+    RegisterSerializer,
+    UserLiteSerializer 
+)
 
 # --- REGISTER VIEW ---
 class RegisterView(generics.CreateAPIView):
-    queryset = Board.objects.none()
+    queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
 
@@ -18,19 +26,21 @@ class RegisterView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
+# --- USER LIST VIEW (YENİ - Dropdown için) ---
+class UserListView(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserLiteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
 # --- BOARD VIEW ---
 class BoardViewSet(viewsets.ModelViewSet):
     serializer_class = BoardSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Sadece kendi panolarını gör
         return Board.objects.filter(owner=self.request.user)
 
-    # HATA BURADAN KAYNAKLANIYOR OLABİLİR:
-    # Bu fonksiyonun 'perform_create' olduğundan ve doğru girintide olduğundan emin ol.
     def perform_create(self, serializer):
-        # Panoyu oluştururken, sahibi (owner) olarak giriş yapan kullanıcıyı ata.
         serializer.save(owner=self.request.user)
 
 # --- COLUMN VIEW ---
@@ -39,11 +49,15 @@ class ColumnViewSet(viewsets.ModelViewSet):
     serializer_class = ColumnSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-# --- TASK VIEW ---
+# --- TASK VIEW (Hata buradaydı, düzeltildi) ---
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    # Görevi oluşturan kişiyi (created_by) otomatik kaydet
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 # --- TAG VIEW ---
 class TagViewSet(viewsets.ModelViewSet):

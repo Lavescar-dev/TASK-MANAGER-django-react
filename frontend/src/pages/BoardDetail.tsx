@@ -4,6 +4,13 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-p
 import api from '../services/api';
 
 // --- TİPLER ---
+interface UserLite {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+}
+
 interface Tag {
     id: number;
     name: string;
@@ -18,6 +25,10 @@ interface Task {
     order: number;
     tags: Tag[];
     due_date: string | null;
+    created_at: string;                // YENİ: Oluşturulma zamanı
+    assigned_to: number | null;        // ID
+    assigned_to_user: UserLite | null; // Detay
+    created_by_user: UserLite | null;  // YENİ: Oluşturan kişi detayı
 }
 
 interface Column {
@@ -40,6 +51,7 @@ interface DeletedTaskData {
         priority: 'low' | 'medium' | 'high';
         tagIds: number[];
         due_date: string | null;
+        assigned_to: number | null;
     };
 }
 
@@ -57,36 +69,43 @@ const getColorClass = (colorName: string) => {
     return colors[colorName] || 'bg-gray-500 text-white';
 };
 
-// --- TARİH FORMATLAYICI (KART ÜZERİNDE GÖRÜNEN) ---
-// Tarayıcı dilinden bağımsız olarak DD.MM.YYYY gösterir.
+// Tarih Formatlayıcı
 const getDateStatus = (dateString: string | null) => {
     if (!dateString) return null;
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const due = new Date(dateString);
-    
     const diffTime = due.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    // Manuel Parçalama: YYYY-MM-DD -> DD.MM.YYYY
     const parts = dateString.split('-'); 
     const formattedDate = `${parts[2]}.${parts[1]}.${parts[0]}`;
 
     if (diffDays < 0) return { color: 'text-red-400', label: `Gecikti (${formattedDate})` };
     if (diffDays === 0) return { color: 'text-orange-400', label: 'Bugün' };
     if (diffDays === 1) return { color: 'text-yellow-400', label: 'Yarın' };
-    
     return { color: 'text-gray-400', label: formattedDate };
+};
+
+// İsimden Baş Harf (Avatar)
+const getInitials = (user: UserLite) => {
+    const first = user.first_name ? user.first_name[0] : user.username[0];
+    const last = user.last_name ? user.last_name[0] : '';
+    return (first + last).toUpperCase();
+};
+
+// İsim Formatlayıcı (Ali Veli veya @aliveli)
+const getUserName = (user: UserLite) => {
+    if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
+    return user.username;
 };
 
 const BoardDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     
-    // --- STATE ---
     const [board, setBoard] = useState<BoardDetail | null>(null);
     const [allTags, setAllTags] = useState<Tag[]>([]);
+    const [allUsers, setAllUsers] = useState<UserLite[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Modals
@@ -100,6 +119,7 @@ const BoardDetail = () => {
     const [newTaskDesc, setNewTaskDesc] = useState('');
     const [newTaskPriority, setNewTaskPriority] = useState<'low'|'medium'|'high'>('medium');
     const [newTaskDueDate, setNewTaskDueDate] = useState('');
+    const [newTaskAssignee, setNewTaskAssignee] = useState<number | ''>('');
 
     // Edit Task State
     const [editingTask, setEditingTask] = useState<{colId: number, task: Task} | null>(null);
@@ -108,6 +128,7 @@ const BoardDetail = () => {
     const [editPriority, setEditPriority] = useState<'low'|'medium'|'high'>('medium');
     const [editDueDate, setEditDueDate] = useState('');
     const [editSelectedTagIds, setEditSelectedTagIds] = useState<number[]>([]);
+    const [editAssignee, setEditAssignee] = useState<number | ''>('');
 
     // Delete & Undo
     const [taskToDelete, setTaskToDelete] = useState<{colId: number, taskId: number} | null>(null);
@@ -117,10 +138,9 @@ const BoardDetail = () => {
     const isRestoringRef = useRef(false);
 
     useEffect(() => {
-        fetchBoardAndTags();
+        fetchBoardData();
     }, [id]);
 
-    // Klavye Dinleyicisi (Undo & Escape)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return; 
@@ -140,14 +160,16 @@ const BoardDetail = () => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [lastDeletedTask, showUndoToast, editingTask, isTaskModalOpen, taskToDelete]); 
 
-    const fetchBoardAndTags = async () => {
+    const fetchBoardData = async () => {
         try {
-            const [boardRes, tagsRes] = await Promise.all([
+            const [boardRes, tagsRes, usersRes] = await Promise.all([
                 api.get(`boards/${id}/`),
-                api.get('tags/')
+                api.get('tags/'),
+                api.get('users/')
             ]);
             setBoard(boardRes.data);
             setAllTags(tagsRes.data);
+            setAllUsers(usersRes.data);
         } catch (error) {
             console.error('Error fetching data:', error);
             navigate('/dashboard');
@@ -156,7 +178,6 @@ const BoardDetail = () => {
         }
     };
 
-    // --- DRAG & DROP ---
     const onDragEnd = async (result: DropResult) => {
         const { destination, source, draggableId } = result;
         if (!destination) return;
@@ -196,7 +217,6 @@ const BoardDetail = () => {
         }
     };
 
-    // --- EDIT TASK FONKSİYONLARI ---
     const openEditModal = (colId: number, task: Task) => {
         setEditingTask({ colId, task });
         setEditTitle(task.title);
@@ -204,6 +224,7 @@ const BoardDetail = () => {
         setEditPriority(task.priority);
         setEditDueDate(task.due_date || '');
         setEditSelectedTagIds(task.tags.map(t => t.id));
+        setEditAssignee(task.assigned_to || '');
     };
 
     const toggleTagSelection = (tagId: number) => {
@@ -223,7 +244,8 @@ const BoardDetail = () => {
                 description: editDesc,
                 priority: editPriority,
                 tag_ids: editSelectedTagIds,
-                due_date: editDueDate || null
+                due_date: editDueDate || null,
+                assigned_to: editAssignee || null
             });
 
             const updatedTask = response.data;
@@ -250,7 +272,6 @@ const BoardDetail = () => {
         }
     };
 
-    // --- SİLME İŞLEMİ ---
     const initiateDelete = (e: React.MouseEvent, colId: number, taskId: number) => {
         e.stopPropagation();
         setTaskToDelete({ colId, taskId });
@@ -269,7 +290,8 @@ const BoardDetail = () => {
                 taskData: { 
                     title: task.title, description: task.description, priority: task.priority,
                     tagIds: task.tags.map(t => t.id),
-                    due_date: task.due_date
+                    due_date: task.due_date,
+                    assigned_to: task.assigned_to
                 }
             });
             setShowUndoToast(true);
@@ -295,7 +317,6 @@ const BoardDetail = () => {
         }
     };
 
-    // --- GERİ ALMA (UNDO) ---
     const handleUndoDelete = async () => {
         if (!lastDeletedTask || isRestoringRef.current) return;
         isRestoringRef.current = true;
@@ -312,6 +333,7 @@ const BoardDetail = () => {
                 priority: taskToRestore.taskData.priority,
                 tag_ids: taskToRestore.taskData.tagIds,
                 due_date: taskToRestore.taskData.due_date,
+                assigned_to: taskToRestore.taskData.assigned_to,
                 order: 999
             });
             const restoredTask = response.data;
@@ -334,7 +356,6 @@ const BoardDetail = () => {
         }
     };
 
-    // --- ADD COLUMN ---
     const handleAddColumn = async (e: FormEvent) => {
         e.preventDefault();
         if (!newColTitle.trim() || !board) return;
@@ -348,16 +369,10 @@ const BoardDetail = () => {
         } catch (error) { console.error(error); }
     };
 
-    // --- ADD TASK (400 HATA ÇÖZÜMÜ: tag_ids eklendi) ---
     const handleAddTask = async (e: FormEvent) => {
         e.preventDefault();
-        
-        if (!newTaskTitle.trim()) {
-            alert("Lütfen bir başlık girin!");
-            return;
-        }
-        if (activeColId === null) {
-            alert("Hata: Sütun seçilmedi.");
+        if (!newTaskTitle.trim() || activeColId === null) {
+            alert("Please enter a title.");
             return;
         }
 
@@ -368,7 +383,8 @@ const BoardDetail = () => {
                 description: newTaskDesc, 
                 priority: newTaskPriority,
                 due_date: newTaskDueDate || null,
-                tag_ids: [] // <-- BU SATIR EKSİKTİ, ARTIK VAR.
+                assigned_to: newTaskAssignee || null,
+                tag_ids: [] 
             };
 
             const response = await api.post('tasks/', payload);
@@ -376,26 +392,18 @@ const BoardDetail = () => {
             setBoard((prev) => {
                 if(!prev) return null;
                 const updatedColumns = prev.columns.map(col => {
-                    if (col.id === activeColId) {
-                        return { ...col, tasks: [...col.tasks, response.data] };
-                    }
+                    if (col.id === activeColId) return { ...col, tasks: [...col.tasks, response.data] };
                     return col;
                 });
                 return { ...prev, columns: updatedColumns };
             });
             
             setIsTaskModalOpen(false);
-            setNewTaskTitle('');
-            setNewTaskDesc('');
-            setNewTaskDueDate('');
+            setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskDueDate(''); setNewTaskAssignee('');
 
         } catch (error: any) { 
             console.error("Task eklenemedi:", error);
-            if (error.response && error.response.data) {
-                alert(`Hata: ${JSON.stringify(error.response.data)}`);
-            } else {
-                alert("Sunucu hatası.");
-            }
+            if (error.response && error.response.data) alert(`Hata: ${JSON.stringify(error.response.data)}`);
         }
     };
 
@@ -459,14 +467,25 @@ const BoardDetail = () => {
                                                                 
                                                                 {task.description && <p className="text-xs text-gray-400 line-clamp-2 mb-2">{task.description}</p>}
                                                                 
-                                                                {dateStatus && (
-                                                                    <div className={`flex items-center text-[11px] font-medium mt-2 ${dateStatus.color}`}>
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                        </svg>
-                                                                        {dateStatus.label}
-                                                                    </div>
-                                                                )}
+                                                                <div className="flex justify-between items-end mt-2">
+                                                                    {/* Tarih */}
+                                                                    {dateStatus ? (
+                                                                        <div className={`flex items-center text-[11px] font-medium ${dateStatus.color}`}>
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                                            {dateStatus.label}
+                                                                        </div>
+                                                                    ) : <div></div>}
+
+                                                                    {/* Avatar (Assigned To) */}
+                                                                    {task.assigned_to_user && (
+                                                                        <div 
+                                                                            className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold border border-gray-600 shadow-sm" 
+                                                                            title={`Assigned to: ${getUserName(task.assigned_to_user)}`}
+                                                                        >
+                                                                            {getInitials(task.assigned_to_user)}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </Draggable>
@@ -475,7 +494,7 @@ const BoardDetail = () => {
                                             {provided.placeholder}
                                         </div>
                                         <div className="p-3 border-t border-gray-700">
-                                            <button onClick={() => { setActiveColId(column.id); setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskPriority('medium'); setNewTaskDueDate(''); setIsTaskModalOpen(true); }} className="w-full py-2 flex items-center justify-center text-sm text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg border border-dashed border-gray-600 hover:border-gray-500">+ Add Task</button>
+                                            <button onClick={() => { setActiveColId(column.id); setNewTaskTitle(''); setNewTaskDesc(''); setNewTaskPriority('medium'); setNewTaskDueDate(''); setNewTaskAssignee(''); setIsTaskModalOpen(true); }} className="w-full py-2 flex items-center justify-center text-sm text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg border border-dashed border-gray-600 hover:border-gray-500">+ Add Task</button>
                                         </div>
                                     </div>
                                 )}
@@ -497,7 +516,7 @@ const BoardDetail = () => {
                 </main>
             </DragDropContext>
 
-            {/* CONFIRM DELETE MODAL (Z-Index 60) */}
+            {/* CONFIRM DELETE MODAL */}
             {taskToDelete && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in" onClick={() => setTaskToDelete(null)}>
                     <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 w-full max-w-sm p-6 transform transition-all scale-100" onClick={e => e.stopPropagation()}>
@@ -511,7 +530,7 @@ const BoardDetail = () => {
                 </div>
             )}
 
-            {/* EDIT TASK MODAL (Z-Index 50) */}
+            {/* EDIT TASK MODAL */}
             {editingTask && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in" onClick={() => setEditingTask(null)}>
                     <div className="bg-gray-800 rounded-xl shadow-2xl border border-gray-700 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -552,6 +571,23 @@ const BoardDetail = () => {
                                 </div>
                             </div>
 
+                            {/* YENİ: Assign To Dropdown */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Assign To</label>
+                                <select 
+                                    value={editAssignee} 
+                                    onChange={(e) => setEditAssignee(Number(e.target.value) || '')} 
+                                    className="w-full px-4 py-2.5 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                >
+                                    <option value="">Unassigned</option>
+                                    {allUsers.map(user => (
+                                        <option key={user.id} value={user.id}>
+                                            {getUserName(user)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Tags</label>
                                 <div className="flex flex-wrap gap-2">
@@ -580,8 +616,14 @@ const BoardDetail = () => {
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
                                 <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none h-40 resize-none leading-relaxed" placeholder="Add a more detailed description..." />
                             </div>
+
+                            {/* YENİ: Created By Info (Footer) */}
+                            <div className="mt-6 pt-4 border-t border-gray-700 text-xs text-gray-500 flex justify-between">
+                                <span>Created by: <span className="text-gray-300">{editingTask.task.created_by_user ? getUserName(editingTask.task.created_by_user) : 'Unknown'}</span></span>
+                                <span>Created on: {new Date(editingTask.task.created_at).toLocaleDateString('tr-TR')}</span>
+                            </div>
                             
-                            <div className="flex justify-between items-center pt-4 border-t border-gray-700 mt-4">
+                            <div className="flex justify-between items-center pt-4 mt-4">
                                 <button type="button" onClick={(e) => initiateDelete(e, editingTask.colId, editingTask.task.id)} className="text-red-400 hover:text-red-300 text-sm font-medium flex items-center space-x-1 hover:bg-red-900/20 px-3 py-2 rounded-lg transition-colors">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     <span>Delete Task</span>
@@ -592,17 +634,6 @@ const BoardDetail = () => {
                                 </div>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-
-            {/* UNDO TOAST */}
-            {showUndoToast && (
-                <div className="fixed bottom-6 right-6 z-50 animate-slide-up">
-                    <div className="bg-gray-800 border border-gray-700 text-white px-4 py-3 rounded-lg shadow-2xl flex items-center space-x-4">
-                        <div className="flex flex-col"><span className="font-medium text-sm">Task deleted</span><span className="text-xs text-gray-500">Press Ctrl+Z to undo</span></div>
-                        <button onClick={handleUndoDelete} disabled={isRestoringRef.current} className={`text-blue-400 hover:text-blue-300 font-bold text-sm px-2 py-1 hover:bg-gray-700 rounded transition-colors ${isRestoringRef.current ? 'opacity-50 cursor-not-allowed' : ''}`}>UNDO</button>
-                        <button onClick={() => setShowUndoToast(false)} className="text-gray-500 hover:text-white ml-2">✕</button>
                     </div>
                 </div>
             )}
@@ -668,6 +699,23 @@ const BoardDetail = () => {
                                         className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none" 
                                     />
                                 </div>
+                            </div>
+
+                            {/* YENİ: Add Task için de Assignee */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Assign To</label>
+                                <select 
+                                    value={newTaskAssignee} 
+                                    onChange={(e) => setNewTaskAssignee(Number(e.target.value) || '')} 
+                                    className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
+                                >
+                                    <option value="">Unassigned</option>
+                                    {allUsers.map(user => (
+                                        <option key={user.id} value={user.id}>
+                                            {getUserName(user)}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             
                             <div className="flex justify-end space-x-3 pt-2">
