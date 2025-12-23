@@ -21,3 +21,4 @@ frontend/yarn-error.log*
 # --- IDE Settings ---
 .vscode/
 .idea/
+.env
