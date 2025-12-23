@@ -28,7 +28,7 @@
 
 First, clone the repository and navigate to the folder:
 ```bash
-git clone [https://github.com/Lavescar-Dev/TASK-MANAGER-django-react.git](https://github.com/Lavescar-Dev/TASK-MANAGER-django-react.git)
+git clone [https://github.com/Lavescar-Dev/TASK-MANAGER-django-react.git]
 cd TASK-MANAGER-django-react
 You can choose Docker (Recommended) or Manual Setup.
 
